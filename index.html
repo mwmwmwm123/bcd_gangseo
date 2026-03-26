@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NC강서점 역기획 트랙커</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #f8fafc; }
+    select, input, button { font-family: inherit; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo } = React;
+
+    const STAGE_CONFIG = [
+      { label: "0단계", color: "#e5e7eb", text: "#374151" },
+      { label: "1단계", color: "#fef3c7", text: "#92400e" },
+      { label: "2단계", color: "#dbeafe", text: "#1e40af" },
+      { label: "3단계", color: "#d1fae5", text: "#065f46" },
+      { label: "4단계", color: "#ede9fe", text: "#5b21b6" },
+      { label: "5단계", color: "#fee2e2", text: "#991b1b" },
+    ];
+
+    const STATUS_CONFIG = {
+      신규: { color: "#dbeafe", text: "#1e40af" },
+      유지: { color: "#d1fae5", text: "#065f46" },
+      OUT: { color: "#fee2e2", text: "#991b1b" },
+    };
+
+    const GRADES = ["A", "B", "C", "F"];
+    const MONTHS = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+    const BASE_COLUMNS = [
+      { id: "brand", label: "브랜드명", fixed: true, width: 160 },
+      { id: "floor", label: "층", width: 50 },
+      { id: "usage", label: "사용면적", width: 70 },
+      { id: "area", label: "예상매출", width: 70 },
+      { id: "md", label: "담당MD", width: 80 },
+      { id: "grade", label: "등급", width: 55 },
+      { id: "type", label: "유형", width: 60 },
+      { id: "status", label: "IN/OUT", fixed: true, width: 80 },
+      { id: "stage", label: "계약단계", fixed: true, width: 90 },
+      { id: "contractDate", label: "계약확정일", fixed: true, width: 110 },
+      { id: "openDate", label: "오픈일자", fixed: true, width: 100 },
+    ];
+    const MONTH_COLUMNS = MONTHS.map(m => ({ id: `month_${m}`, label: `${m}월`, fixed: true, width: 52, isMonth: true }));
+    const EXTRA_COLUMNS = [{ id: "memo", label: "MD메모", width: 140 }];
+    const DEFAULT_COLUMNS = [...BASE_COLUMNS, ...MONTH_COLUMNS, ...EXTRA_COLUMNS];
+
+    const INITIAL_BRANDS = [
+      { id: 1, brand: "뉴발란스", floor: 1, usage: 250, area: 5000, md: "김영준", grade: "A", type: "신규", status: "유지", stage: 5, contractDate: "2025-02-01", openDate: "2025-04-01", memo: "" },
+      { id: 2, brand: "팜파스", floor: 1, usage: 250, area: 3000, md: "유승기", grade: "A", type: "신규", status: "신규", stage: 4, contractDate: "2025-03-15", openDate: "2025-06-01", memo: "" },
+      { id: 3, brand: "올리브영", floor: 1, usage: 500, area: 8000, md: "김병준", grade: "A", type: "신규", status: "신규", stage: 4, contractDate: "2025-04-01", openDate: "2025-07-01", memo: "" },
+      { id: 4, brand: "아디다스", floor: 1, usage: 300, area: 6000, md: "이경선", grade: "A", type: "신규", status: "신규", stage: 3, contractDate: "", openDate: "", memo: "" },
+      { id: 5, brand: "DJI", floor: 1, usage: 200, area: 4000, md: "김병준", grade: "A", type: "신규", status: "신규", stage: 2, contractDate: "", openDate: "", memo: "" },
+      { id: 6, brand: "디저트 스퀘어", floor: 1, usage: 100, area: 2000, md: "고형영", grade: "B", type: "신규", status: "신규", stage: 2, contractDate: "", openDate: "", memo: "" },
+      { id: 7, brand: "새턴 (SATUR)", floor: 1, usage: 100, area: 1500, md: "임정동", grade: "B", type: "신규", status: "OUT", stage: 1, contractDate: "", openDate: "", memo: "" },
+      { id: 8, brand: "호카/아식스", floor: 1, usage: 150, area: 3500, md: "이경선", grade: "A", type: "신규", status: "신규", stage: 1, contractDate: "", openDate: "", memo: "" },
+      { id: 9, brand: "미라클뷰티", floor: 1, usage: 100, area: 2500, md: "이경선", grade: "B", type: "신규", status: "유지", stage: 0, contractDate: "", openDate: "", memo: "" },
+      { id: 10, brand: "러쉬 (LUSH)", floor: 1, usage: 80, area: 2000, md: "강진영", grade: "A", type: "신규", status: "신규", stage: 0, contractDate: "", openDate: "", memo: "" },
+    ];
+
+    const NOW_MONTH = new Date().getMonth() + 1;
+
+    function App() {
+      const [brands, setBrands] = useState(INITIAL_BRANDS);
+      const [customCols, setCustomCols] = useState([]);
+      const [hiddenCols, setHiddenCols] = useState([]);
+      const [colLabels, setColLabels] = useState({});
+      const [editingLabel, setEditingLabel] = useState(null);
+      const [labelDraft, setLabelDraft] = useState("");
+      const [tab, setTab] = useState("tracker");
+      const [filters, setFilters] = useState({ status: "전체", stage: "전체", md: "전체" });
+      const [editingCell, setEditingCell] = useState(null);
+      const [newCol, setNewCol] = useState("");
+      const [showAddBrand, setShowAddBrand] = useState(false);
+      const [newBrand, setNewBrand] = useState({ brand: "", floor: 1, usage: 0, area: 0, md: "", grade: "A", type: "신규", status: "신규", stage: 0, contractDate: "", openDate: "", memo: "" });
+      const [search, setSearch] = useState("");
+      const [sortConfig, setSortConfig] = useState({ key: null, dir: "asc" });
+      const STATUS_ORDER = { 신규: 0, 유지: 1, OUT: 2 };
+
+      const toggleHideCol = (id) => setHiddenCols(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
+      const allColumns = useMemo(() =>
+        [...DEFAULT_COLUMNS, ...customCols]
+          .filter(c => !hiddenCols.includes(c.id))
+          .map(c => colLabels[c.id] ? { ...c, label: colLabels[c.id] } : c),
+        [customCols, hiddenCols, colLabels]);
+
+      const mdList = useMemo(() => [...new Set(brands.map(b => b.md).filter(Boolean))], [brands]);
+
+      const handleSort = (colId) => setSortConfig(prev =>
+        prev.key === colId ? { key: colId, dir: prev.dir === "asc" ? "desc" : "asc" } : { key: colId, dir: "asc" });
+
+      const filtered = useMemo(() => {
+        let arr = brands.filter(b => {
+          if (filters.status !== "전체" && b.status !== filters.status) return false;
+          if (filters.stage !== "전체" && b.stage !== Number(filters.stage)) return false;
+          if (filters.md !== "전체" && b.md !== filters.md) return false;
+          if (search && !b.brand.toLowerCase().includes(search.toLowerCase())) return false;
+          return true;
+        });
+        if (sortConfig.key) {
+          arr = [...arr].sort((a, b) => {
+            let av = a[sortConfig.key] ?? "";
+            let bv = b[sortConfig.key] ?? "";
+            if (sortConfig.key === "status") { av = STATUS_ORDER[av] ?? 9; bv = STATUS_ORDER[bv] ?? 9; }
+            if (typeof av === "number" && typeof bv === "number") return sortConfig.dir === "asc" ? av - bv : bv - av;
+            return sortConfig.dir === "asc" ? String(av).localeCompare(String(bv), "ko") : String(bv).localeCompare(String(av), "ko");
+          });
+        }
+        return arr;
+      }, [brands, filters, search, sortConfig]);
+
+      const summary = useMemo(() => {
+        const contractByMonth = MONTHS.map(m =>
+          brands.filter(b => b.contractDate && new Date(b.contractDate).getMonth() + 1 <= m).length
+        );
+        const openByMonth = MONTHS.map(m =>
+          brands.filter(b => b.openDate && new Date(b.openDate).getMonth() + 1 <= m).length
+        );
+        return {
+          total: brands.length,
+          in: brands.filter(b => b.status === "신규").length,
+          out: brands.filter(b => b.status === "OUT").length,
+          nego: brands.filter(b => b.status === "유지").length,
+          stages: STAGE_CONFIG.map((_, i) => brands.filter(b => b.stage === i).length),
+          contractByMonth,
+          openByMonth,
+        };
+      }, [brands]);
+
+      const updateCell = (id, field, val) => {
+        setBrands(prev => prev.map(b => b.id === id ? { ...b, [field]: val } : b));
+        setEditingCell(null);
+      };
+
+      const getOpenMonth = (d) => { if (!d) return null; const m = new Date(d).getMonth()+1; return isNaN(m)?null:m; };
+      const getContractMonth = (d) => { if (!d) return null; const m = new Date(d).getMonth()+1; return isNaN(m)?null:m; };
+
+      const addColumn = () => {
+        if (!newCol.trim()) return;
+        const id = `custom_${Date.now()}`;
+        setCustomCols(prev => [...prev, { id, label: newCol.trim(), width: 100 }]);
+        setBrands(prev => prev.map(b => ({ ...b, [id]: "" })));
+        setNewCol("");
+      };
+      const removeCustomCol = (id) => setCustomCols(prev => prev.filter(c => c.id !== id));
+      const addBrand = () => {
+        setBrands(prev => [...prev, { ...newBrand, id: Date.now() }]);
+        setShowAddBrand(false);
+        setNewBrand({ brand: "", floor: 1, usage: 0, area: 0, md: "", grade: "A", type: "신규", status: "신규", stage: 0, contractDate: "", openDate: "", memo: "" });
+      };
+      const deleteBrand = (id) => setBrands(prev => prev.filter(b => b.id !== id));
+
+      const renderCell = (b, col) => {
+        const key = `${b.id}-${col.id}`;
+        const isEditing = editingCell === key;
+        const val = b[col.id] ?? "";
+
+        if (col.isMonth) {
+          const m = col.id.replace("month_", "") * 1;
+          const isOpen = getOpenMonth(b.openDate) === m;
+          const isContract = getContractMonth(b.contractDate) === m;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center" }}>
+              {isContract && <span style={{ background: "#dbeafe", color: "#1e40af", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>계약</span>}
+              {isOpen && <span style={{ background: "#d1fae5", color: "#065f46", borderRadius: 4, padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>오픈</span>}
+            </div>
+          );
+        }
+        if (col.id === "grade") {
+          const gc = val==="A"?{bg:"#fef3c7",c:"#92400e"}:val==="B"?{bg:"#dbeafe",c:"#1e40af"}:val==="C"?{bg:"#f3f4f6",c:"#374151"}:{bg:"#fee2e2",c:"#991b1b"};
+          return (
+            <select value={val} onChange={e => updateCell(b.id, "grade", e.target.value)}
+              style={{ border: "1px solid #e5e7eb", borderRadius: 6, padding: "2px 4px", fontWeight: 700, fontSize: 11, cursor: "pointer", background: gc.bg, color: gc.c }}>
+              {GRADES.map(g => <option key={g}>{g}</option>)}
+            </select>
+          );
+        }
+        if (col.id === "stage") {
+          return (
+            <select value={b.stage} onChange={e => updateCell(b.id, "stage", Number(e.target.value))}
+              style={{ background: STAGE_CONFIG[b.stage].color, color: STAGE_CONFIG[b.stage].text, border: "none", borderRadius: 6, padding: "3px 5px", fontWeight: 700, fontSize: 11, cursor: "pointer", width: "100%" }}>
+              {STAGE_CONFIG.map((s, i) => <option key={i} value={i}>{s.label}</option>)}
+            </select>
+          );
+        }
+        if (col.id === "status") {
+          return (
+            <select value={b.status} onChange={e => updateCell(b.id, "status", e.target.value)}
+              style={{ background: STATUS_CONFIG[b.status].color, color: STATUS_CONFIG[b.status].text, border: "none", borderRadius: 6, padding: "3px 5px", fontWeight: 700, fontSize: 11, cursor: "pointer", width: "100%" }}>
+              {Object.keys(STATUS_CONFIG).map(s => <option key={s}>{s}</option>)}
+            </select>
+          );
+        }
+        if (col.id === "contractDate" || col.id === "openDate") {
+          return isEditing
+            ? <input type="date" autoFocus defaultValue={val} onBlur={e => updateCell(b.id, col.id, e.target.value)}
+                style={{ border: "1px solid #6366f1", borderRadius: 4, padding: "2px 4px", fontSize: 11, width: 108 }} />
+            : <div onClick={() => setEditingCell(key)} style={{ fontSize: 11, cursor: "pointer", color: val ? "#374151" : "#c4b5fd" }}>
+                {val ? val.slice(0,10) : "날짜 입력"}
+              </div>;
+        }
+        if (col.id === "memo") {
+          return isEditing
+            ? <input autoFocus defaultValue={val} onBlur={e => updateCell(b.id, col.id, e.target.value)}
+                style={{ width: "100%", border: "1px solid #6366f1", borderRadius: 4, padding: "2px 6px", fontSize: 11 }} />
+            : <div onClick={() => setEditingCell(key)} style={{ color: val?"#374151":"#9ca3af", cursor: "pointer", fontSize: 11, minWidth: 80 }}>{val||"메모..."}</div>;
+        }
+        if (col.id === "brand") {
+          return isEditing
+            ? <input autoFocus defaultValue={val} onBlur={e => updateCell(b.id, col.id, e.target.value)}
+                style={{ width: "100%", border: "1px solid #6366f1", borderRadius: 4, padding: "2px 6px", fontSize: 12, fontWeight: 700 }} />
+            : <div onClick={() => setEditingCell(key)} style={{ fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{val}</div>;
+        }
+        return isEditing
+          ? <input autoFocus defaultValue={val} onBlur={e => updateCell(b.id, col.id, e.target.value)}
+              style={{ width: 55, border: "1px solid #6366f1", borderRadius: 4, padding: "2px 4px", fontSize: 11 }} />
+          : <div onClick={() => setEditingCell(key)} style={{ fontSize: 11, cursor: "pointer" }}>{val}</div>;
+      };
+
+      return (
+        <div style={{ fontFamily: "'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif", background: "#f8fafc", minHeight: "100vh", padding: 12 }}>
+          {/* Header */}
+          <div style={{ background: "linear-gradient(135deg,#6366f1,#8b5cf6)", borderRadius: 14, padding: "14px 18px", marginBottom: 12, color: "#fff" }}>
+            <div style={{ fontWeight: 800, fontSize: 17 }}>🏬 NC강서점 1/2층 BCD 역기획 트랙커</div>
+            <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>90점 목표</div>
+          </div>
+
+          {/* Summary cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
+            {[
+              { label: "전체", val: summary.total, color: "#6366f1" },
+              { label: "신규", val: summary.in, color: "#1e40af" },
+              { label: "유지", val: summary.nego, color: "#10b981" },
+              { label: "OUT", val: summary.out, color: "#ef4444" },
+            ].map(c => (
+              <div key={c.label} style={{ background: "#fff", borderRadius: 10, padding: "8px 12px", boxShadow: "0 1px 3px rgba(0,0,0,0.07)", borderTop: `3px solid ${c.color}` }}>
+                <div style={{ fontSize: 10, color: "#6b7280" }}>{c.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: c.color }}>{c.val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Stage summary */}
+          <div style={{ background: "#fff", borderRadius: 10, padding: "8px 14px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.07)" }}>
+            <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 5, fontWeight: 700 }}>계약단계 현황</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {STAGE_CONFIG.map((s, i) => (
+                <div key={i} style={{ background: s.color, color: s.text, borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>
+                  {s.label} {summary.stages[i]}개
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Monthly cumulative dashboard */}
+          <div style={{ background: "#fff", borderRadius: 10, padding: "10px 14px", marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.07)" }}>
+            <div style={{ fontSize: 10, color: "#6b7280", marginBottom: 8, fontWeight: 700 }}>📅 월별 누적 현황 <span style={{ color: "#6366f1", fontWeight: 800 }}>({NOW_MONTH}월 기준)</span></div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", fontSize: 11, width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: "4px 8px", textAlign: "left", color: "#6b7280", fontWeight: 700, whiteSpace: "nowrap" }}>구분</th>
+                    {MONTHS.map(m => (
+                      <th key={m} style={{ padding: "4px 6px", textAlign: "center", color: m===NOW_MONTH?"#6366f1":"#6b7280", fontWeight: m===NOW_MONTH?800:600, background: m===NOW_MONTH?"#ede9fe":undefined, borderRadius: 4, whiteSpace: "nowrap" }}>
+                        {m}월
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: "계약 누적", data: summary.contractByMonth, color: "#1e40af", bg: "#dbeafe" },
+                    { label: "오픈 누적", data: summary.openByMonth, color: "#065f46", bg: "#d1fae5" },
+                  ].map(row => (
+                    <tr key={row.label}>
+                      <td style={{ padding: "4px 8px", fontWeight: 700, color: row.color, whiteSpace: "nowrap" }}>{row.label}</td>
+                      {MONTHS.map(m => (
+                        <td key={m} style={{ padding: "4px 6px", textAlign: "center", background: m===NOW_MONTH?"#ede9fe":undefined }}>
+                          {row.data[m-1] > 0
+                            ? <span style={{ background: row.bg, color: row.color, borderRadius: 12, padding: "1px 8px", fontWeight: 700, fontSize: 11 }}>{row.data[m-1]}</span>
+                            : <span style={{ color: "#d1d5db" }}>-</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+            {[["tracker","📋 트랙커"],["columns","⚙️ 컬럼 관리"]].map(([t,l]) => (
+              <button key={t} onClick={() => setTab(t)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12, background: tab===t?"#6366f1":"#e5e7eb", color: tab===t?"#fff":"#374151" }}>{l}</button>
+            ))}
+          </div>
+
+          {tab === "tracker" && (
+            <>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 브랜드 검색..." style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, flex: 1, minWidth: 120 }} />
+                {[
+                  { key: "status", opts: ["전체","신규","유지","OUT"] },
+                  { key: "stage", opts: ["전체",0,1,2,3,4,5] },
+                  { key: "md", opts: ["전체",...mdList] },
+                ].map(f => (
+                  <select key={f.key} value={filters[f.key]} onChange={e => setFilters(p => ({...p,[f.key]:e.target.value}))}
+                    style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, background: "#fff" }}>
+                    {f.opts.map(o => <option key={o} value={o}>{f.key==="stage"&&o!=="전체"?`${o}단계`:o}</option>)}
+                  </select>
+                ))}
+                <button onClick={() => setShowAddBrand(true)} style={{ padding: "6px 12px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+ 추가</button>
+              </div>
+
+              <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
+                <table style={{ borderCollapse: "collapse", fontSize: 11, whiteSpace: "nowrap" }}>
+                  <thead>
+                    <tr style={{ background: "#f1f5f9" }}>
+                      {allColumns.map(c => (
+                        <th key={c.id} onClick={() => !c.isMonth && handleSort(c.id)}
+                          style={{ padding: "9px 10px", textAlign: "left", fontWeight: 700, color: "#374151", borderBottom: "2px solid #e5e7eb", minWidth: c.width||70, background: c.isMonth?"#f0f9ff":undefined, cursor: c.isMonth?"default":"pointer", userSelect: "none" }}>
+                          {c.label}
+                          {!c.isMonth && <span style={{ marginLeft: 3, fontSize: 9, color: sortConfig.key===c.id?"#6366f1":"#d1d5db" }}>{sortConfig.key===c.id?(sortConfig.dir==="asc"?"▲":"▼"):"⇅"}</span>}
+                        </th>
+                      ))}
+                      <th style={{ padding: "9px 10px", borderBottom: "2px solid #e5e7eb" }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((b, i) => (
+                      <tr key={b.id} style={{ borderBottom: "1px solid #f1f5f9", background: i%2===0?"#fff":"#fafafa" }}>
+                        {allColumns.map(c => (
+                          <td key={c.id} style={{ padding: "7px 10px", verticalAlign: "middle", background: c.isMonth?"#f0f9ff":undefined }}>
+                            {renderCell(b, c)}
+                          </td>
+                        ))}
+                        <td style={{ padding: "7px 10px" }}>
+                          <button onClick={() => deleteBrand(b.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 13 }}>✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filtered.length === 0 && <div style={{ textAlign: "center", padding: 32, color: "#9ca3af", fontSize: 13 }}>조건에 맞는 브랜드가 없어요</div>}
+              </div>
+            </>
+          )}
+
+          {tab === "columns" && (
+            <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 4px rgba(0,0,0,0.07)" }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>⚙️ 컬럼 관리</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 12 }}>✏️ 컬럼명 수정, 🙈 숨기기/표시, 커스텀 컬럼은 삭제도 가능해요.</div>
+              {[...DEFAULT_COLUMNS, ...customCols].map(c => {
+                const hidden = hiddenCols.includes(c.id);
+                return (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderRadius: 8, background: hidden?"#f1f5f9":"#f8fafc", marginBottom: 6, border: "1px solid #e5e7eb", opacity: hidden?0.5:1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1 }}>
+                      {editingLabel === c.id
+                        ? <input autoFocus value={labelDraft} onChange={e => setLabelDraft(e.target.value)}
+                            onBlur={() => { setColLabels(p => ({...p,[c.id]:labelDraft})); setEditingLabel(null); }}
+                            onKeyDown={e => { if(e.key==="Enter"){setColLabels(p=>({...p,[c.id]:labelDraft}));setEditingLabel(null);} if(e.key==="Escape")setEditingLabel(null); }}
+                            style={{ fontSize: 13, fontWeight: 600, border: "1px solid #6366f1", borderRadius: 6, padding: "2px 7px", width: 120 }} />
+                        : <span style={{ fontWeight: 600, fontSize: 13, textDecoration: hidden?"line-through":"none", color: hidden?"#9ca3af":"#374151" }}>{colLabels[c.id]||c.label}</span>
+                      }
+                      {editingLabel !== c.id &&
+                        <button onClick={() => { setEditingLabel(c.id); setLabelDraft(colLabels[c.id]||c.label); }}
+                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#9ca3af", padding: 0 }}>✏️</button>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => toggleHideCol(c.id)} style={{ background: hidden?"#dbeafe":"#e5e7eb", color: hidden?"#1e40af":"#374151", border: "none", borderRadius: 6, padding: "3px 9px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                        {hidden?"👁 표시":"🙈 숨김"}
+                      </button>
+                      {!c.fixed && !c.isMonth && (
+                        <button onClick={() => removeCustomCol(c.id)} style={{ background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 6, padding: "3px 9px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>삭제</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <input value={newCol} onChange={e => setNewCol(e.target.value)} onKeyDown={e => e.key==="Enter"&&addColumn()} placeholder="새 컬럼 이름..." style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }} />
+                <button onClick={addColumn} style={{ padding: "7px 14px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer", fontSize: 12 }}>+ 추가</button>
+              </div>
+            </div>
+          )}
+
+          {showAddBrand && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+              <div style={{ background: "#fff", borderRadius: 16, padding: 22, width: 320, maxWidth: "90vw", maxHeight: "90vh", overflowY: "auto" }}>
+                <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14 }}>➕ 브랜드 추가</div>
+                {[
+                  {f:"brand",label:"브랜드명",type:"text"},
+                  {f:"floor",label:"층",type:"number"},
+                  {f:"usage",label:"사용면적",type:"number"},
+                  {f:"area",label:"예상매출",type:"number"},
+                  {f:"md",label:"담당MD",type:"text"},
+                  {f:"contractDate",label:"계약확정일",type:"date"},
+                  {f:"openDate",label:"오픈일자",type:"date"},
+                ].map(({f,label,type}) => (
+                  <div key={f} style={{ marginBottom: 9 }}>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 3 }}>{label}</div>
+                    <input type={type} value={newBrand[f]} onChange={e => setNewBrand(p => ({...p,[f]:type==="number"?Number(e.target.value):e.target.value}))}
+                      style={{ width: "100%", padding: "6px 9px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12, boxSizing: "border-box" }} />
+                  </div>
+                ))}
+                {[
+                  {f:"grade",label:"등급",opts:GRADES},
+                  {f:"status",label:"상태",opts:["신규","유지","OUT"]},
+                ].map(({f,label,opts}) => (
+                  <div key={f} style={{ marginBottom: 9 }}>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 3 }}>{label}</div>
+                    <select value={newBrand[f]} onChange={e => setNewBrand(p => ({...p,[f]:e.target.value}))}
+                      style={{ width: "100%", padding: "6px 9px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}>
+                      {opts.map(o => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                ))}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 3 }}>계약단계</div>
+                  <select value={newBrand.stage} onChange={e => setNewBrand(p => ({...p,stage:Number(e.target.value)}))}
+                    style={{ width: "100%", padding: "6px 9px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 12 }}>
+                    {STAGE_CONFIG.map((s,i) => <option key={i} value={i}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setShowAddBrand(false)} style={{ flex: 1, padding: 9, borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>취소</button>
+                  <button onClick={addBrand} style={{ flex: 1, padding: 9, borderRadius: 8, border: "none", background: "#6366f1", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>추가</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
